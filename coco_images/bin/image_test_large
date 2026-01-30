@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+
+import cv2
+import os
+import random
+import subprocess
+
+IMAGE_DIR = "val2017/"  # <-- adjust if needed
+DISPLAY_SECONDS = 2
+SCREEN_SCALE = 0.8
+FALLBACK_SCREEN = (1920, 1080)  # used if detection fails
+
+def get_screen_size():
+    """
+    Prefer xrandr (X11). If that fails (Wayland/headless), return fallback.
+    """
+    try:
+        out = subprocess.check_output(["xrandr"], stderr=subprocess.DEVNULL, text=True)
+        # Look for the current mode marked with "*"
+        for line in out.splitlines():
+            line = line.strip()
+            if "*" in line:
+                # Example: "1920x1080     60.00*+  59.94"
+                token = line.split()[0]
+                if "x" in token:
+                    w, h = token.split("x", 1)
+                    w, h = int(w), int(h)
+                    if w > 0 and h > 0:
+                        return w, h
+    except Exception:
+        pass
+
+    return FALLBACK_SCREEN
+
+def resize_to_fit(img, max_w, max_h):
+    h, w = img.shape[:2]
+
+    # Hard safety guards
+    if max_w <= 0 or max_h <= 0:
+        max_w, max_h = FALLBACK_SCREEN
+
+    scale = min(max_w / w, max_h / h)
+
+    # If scale is nonsense, don't resize
+    if scale <= 0:
+        return img
+
+    new_w = max(1, int(w * scale))
+    new_h = max(1, int(h * scale))
+
+    return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+def main():
+    images = [
+        os.path.join(IMAGE_DIR, f)
+        for f in os.listdir(IMAGE_DIR)
+        if f.lower().endswith(".jpg")
+    ]
+
+    if not images:
+        raise RuntimeError(f"No .jpg images found in {IMAGE_DIR}")
+
+    screen_w, screen_h = get_screen_size()
+    max_w = int(screen_w * SCREEN_SCALE)
+    max_h = int(screen_h * SCREEN_SCALE)
+
+    print(f"Screen: {screen_w}x{screen_h}")
+    print(f"Image max: {max_w}x{max_h}")
+    print(f"Loaded {len(images)} images")
+
+    cv2.namedWindow("COCO Random Viewer", cv2.WINDOW_NORMAL)
+
+    while True:
+        img_path = random.choice(images)
+        img = cv2.imread(img_path)
+        if img is None:
+            continue
+
+        img = resize_to_fit(img, max_w, max_h)
+
+        cv2.imshow("COCO Random Viewer", img)
+
+        # center-ish (optional)
+        # cv2.moveWindow("COCO Random Viewer", (screen_w - img.shape[1]) // 2, (screen_h - img.shape[0]) // 2)
+
+        if cv2.waitKey(DISPLAY_SECONDS * 1000) & 0xFF == ord('q'):
+            break
+
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
+
